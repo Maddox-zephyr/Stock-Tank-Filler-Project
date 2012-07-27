@@ -37,6 +37,10 @@
 // http://zephyr-labs.com
 //
 // Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported (CC BY-NC-SA 3.0)
+//
+//----------------------------------------------------------------------------------------------
+// Revised June 14 adding a check if Float switch never indicated Full after a reasonable time
+//                 when water is on. Added state 3 to return to normal after SW goes high (full)
 //******************************************************************************
 
 #include  <msp430g2553.h>
@@ -95,11 +99,16 @@ void main(void)
 	case 1:									// State = 1; Water is on
 		if(clk_count > 1) {					// Water on for at least 2 interval (~44 secs). On hysteresis.
 			if(P2IN) {    					// Check the Float Switch. If High, Tank is full.
-			state = 0;						// Turn off the water!
 			clk_count = 0;					// Reset clock counter as the water could have been on for the check_interval. Off Hysteresis.
 			state = 2;						// Enter hysteresis state
-			Solenoid_pulse(off);			// Drive pulse and flash LED
-			}			
+			Solenoid_pulse(off);			// Turn off the water! Drive pulse and flash LED
+			}
+			else {
+				if(clk_count >= (check_interval << 5)) {	// Has water been on longer than 12 mins?
+					state = 3;				// Either Float sw jammed or defective
+					Solenoid_pulse(off);	// Turn off the water! Drive pulse and flash LED
+				}
+			}
 		}
 		break;
 
@@ -110,7 +119,15 @@ void main(void)
 		}
 		break;
 
-    }
+	case 3:									// An error state, Float SW didn't indicate filled
+		if(P2IN) {							// Is Float SW high (Full)?
+			state = 0;						// Float SW fixed
+			clk_count = 0;
+		}
+		break;
+
+		}
+
     __bis_SR_register(LPM3_bits + GIE); 	// Enter LPM3, interrupts enabled
   }
 }
